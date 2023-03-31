@@ -102,12 +102,13 @@ def print_item(item, dead=False):
 
     # Newer method
     print("\t",item["ip"] + "\t", '"'+item['alias'] +'"', item["hostname"])
-    print("\t","└ Last seen:", str(round(time.time() - item["last_seen"])) + "s")
-    print("\t","└ Version:", item["zdar_version"], "!" if ZDAR_VERSION != item["zdar_version"] else "")
-    print("\t","└ ZDAR interval:", str(item["zdar_interval"]) + "s")
-    print("\t","└ Platform:", item["platform"])
+    print("\t"," └ Last seen:", str(round(time.time() - item["last_seen"])) + "s")
     if dead:
-        print("\t","└ Dead interval exceeded! Removing...")
+        print("\t","   └ Dead interval exceeded! Removing...")
+
+    print("\t"," └ Version:", item["zdar_version"], "!" if ZDAR_VERSION != item["zdar_version"] else "")
+    print("\t"," └ ZDAR interval:", str(item["zdar_interval"]) + "s")
+    print("\t"," └ Platform:", item["platform"])
     print()
 
 # A method to refresh and print the output to stdout
@@ -134,11 +135,12 @@ def print_output(sending):
     print("\nDiscovered:\n")
     print("\t IP address\t \"Alias\" Hostname\n")
 
-    # print every item to screen, if they surpassed the dead interval, delete them
+    # print every item to screen, if they surpassed the dead interval, delete them after 5 sec
     for item in zdar_db:
         if (item["last_seen"] + item["zdar_interval"] * 2) < time.time():
             print_item(item, dead=True)
-            zdar_db.remove(item)
+            if (item["last_seen"] + item["zdar_interval"] * 2 + 5) < time.time():
+                zdar_db.remove(item)
         else:
             print_item(item)
 
