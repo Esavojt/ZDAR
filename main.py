@@ -8,6 +8,7 @@ ZDAR_ALIAS = "example"
 ZDAR_VERSION = 3
 
 
+ZDAR_PORT = 10069
 
 import socket
 import select 
@@ -15,38 +16,46 @@ import time
 import platform
 import os
 
+# Setup socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(("0.0.0.0", 10069))
+sock.bind(("0.0.0.0", ZDAR_PORT))
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
 zdar_db = []
 
-time_delay = time.time() + ZDAR_INTERVAL
-
+# Method for clearing the screen
 def clear():
     os.system('cls' if os.name == 'nt' else 'clear')
 
+# Method for handling packet data and creating entries
 def handle_packet(data, ip):
-    if data[0:4] != b"ZDAR": return
+    offset = 0
+    if data[offset:offset + 4] != b"ZDAR": return
+    offset += 4
 
-    version = int.from_bytes(data[4:6], "little", signed=False)
+    version = int.from_bytes(data[offset:offset + 2], "little", signed=False)
+    offset += 2
 
-    interval = int.from_bytes(data[6:8], "little", signed=False)
-    print(interval)
+    interval = int.from_bytes(data[offset:offset + 2], "little", signed=False)
+    offset += 2
 
-    hostname_len = int.from_bytes(data[8:10], "little", signed=False)
-    hostname = data[10:10+hostname_len].decode("utf-8")
-    print(hostname)
+    hostname_len = int.from_bytes(data[offset:offset + 2], "little", signed=False)
+    offset += 2
+    hostname = data[offset:offset + hostname_len].decode("utf-8")
+    offset += hostname_len
     
-    alias_len = int.from_bytes(data[10+hostname_len:12+hostname_len], "little", signed=False)
-    alias = data[12+hostname_len:12+hostname_len+alias_len].decode("utf-8")
-    print(alias)
+    alias_len = int.from_bytes(data[offset:offset + 2], "little", signed=False)
+    offset += 2
+    alias = data[offset:offset + alias_len].decode("utf-8")
+    offset += alias_len
     
-    plat_len = int.from_bytes(data[12+hostname_len:14+hostname_len+alias_len], "little", signed=False)
-    plat = data[14+hostname_len+alias_len:14+hostname_len+alias_len+plat_len].decode("utf-8")
-    print(plat)
+    plat_len = int.from_bytes(data[offset:offset + 2], "little", signed=False)
+    offset += 2
+    plat = data[offset:offset + plat_len].decode("utf-8")
+    offset += plat_len
 
     is_in = False
+    # Check if item is already in DB, if yes, update the entry, if not create a new one
     for item in zdar_db:
         if item["hostname"] == hostname:     
             item["hostname"] = hostname
@@ -71,6 +80,7 @@ def handle_packet(data, ip):
         zdar_db.append(i)
 
 def print_item(item, dead=False):
+    # Older method of showing entries
     """     
     message = item["hostname"] + "\t" 
     message += item["alias"] + "\t" 
@@ -90,6 +100,7 @@ def print_item(item, dead=False):
     print(message)
     """
 
+    # Newer method
     print("\t",item["ip"] + "\t", '"'+item['alias'] +'"', item["hostname"])
     print("\t","└ Last seen:", str(round(time.time() - item["last_seen"])) + "s")
     print("\t","└ Version:", item["zdar_version"], "!" if ZDAR_VERSION != item["zdar_version"] else "")
@@ -99,8 +110,10 @@ def print_item(item, dead=False):
         print("\t","└ Dead interval exceeded! Removing...")
     print()
 
+# A method to refresh and print the output to stdout
 def print_output(sending):
     clear()
+
     print(""" 
     ███████╗██████╗  █████╗ ██████╗ 
     ╚══███╔╝██╔══██╗██╔══██╗██╔══██╗
@@ -112,6 +125,7 @@ def print_output(sending):
     print("Version:",ZDAR_VERSION)
     print("Local ZDAR interval:", ZDAR_INTERVAL)
     print("Local alias:", ZDAR_ALIAS)
+    # Update msg if sent packet 
     if sending:
         print("Status: Sending ZDAR ")
     else: 
@@ -119,17 +133,18 @@ def print_output(sending):
 
     print("\nDiscovered:\n")
     print("\t IP address\t \"Alias\" Hostname\n")
+
+    # print every item to screen, if they surpassed the dead interval, delete them
     for item in zdar_db:
         if (item["last_seen"] + item["zdar_interval"] * 2) < time.time():
             print_item(item, dead=True)
             zdar_db.remove(item)
         else:
             print_item(item)
-    
-    if sending:
-        time.sleep(1)
 
+# Method to send ZDAR announcement packet
 def send_zdar():
+
     hostname = socket.gethostname()
     # Header
     packet_data = b"ZDAR"
@@ -153,19 +168,25 @@ def send_zdar():
     packet_data += int.to_bytes(len(plat), 2, "little", signed=False)
     packet_data += plat.encode("utf-8")
     
-    sock.sendto(packet_data, ("255.255.255.255", 10069))
+    # Send packet to broadcast
+    sock.sendto(packet_data, ("255.255.255.255", ZDAR_PORT))
 
-
+# Main code
 if __name__ == "__main__":
     send_zdar()
+    time_delay = time.time() + ZDAR_INTERVAL
+
     while True:
         sending = False
-        rede, wride, execude = select.select([sock], [], [], 1)
+        # Check if announcement was received
+        readable, _, _ = select.select([sock], [], [], 0)
 
-        if len(rede) > 0:
+        # If yes read data and handle them
+        if len(readable) > 0:
             data, ip = sock.recvfrom(1024)
             handle_packet(data, ip)
 
+        # If ZDAR_INTERVAL was already surpassed, send new packet
         if time.time() > time_delay:
             sending = True
             time_delay = time.time() + ZDAR_INTERVAL
@@ -173,3 +194,4 @@ if __name__ == "__main__":
 
 
         print_output(sending)
+        time.sleep(0.5)
